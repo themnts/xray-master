@@ -11,7 +11,30 @@ Subscription master server for a cluster of [xray-node](https://github.com/theth
 
 **Technical spec:** [docs/TECHNICAL.md](docs/TECHNICAL.md)
 
-## Quick start
+## Install (production)
+
+On a dedicated VPS (Ubuntu/Debian):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thethoughtcriminal/xray-master/main/scripts/install.sh | sudo bash
+```
+
+With HTTPS reverse proxy (Caddy) — DNS for the domain must already point to this server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thethoughtcriminal/xray-master/main/scripts/install.sh | \
+  sudo XRAY_MASTER_PUBLIC_URL=https://sub.example.com XRAY_MASTER_INSTALL_CADDY=1 bash
+```
+
+The installer builds the binary, writes `/etc/xray-master/config.yaml` (generates `admin_key`), creates a systemd service, and listens on `127.0.0.1:9480` by default.
+
+Uninstall:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thethoughtcriminal/xray-master/main/scripts/uninstall.sh | sudo bash -s -- --yes
+```
+
+## Quick start (development)
 
 ```bash
 go build -o bin/xray-master ./cmd/xray-master
