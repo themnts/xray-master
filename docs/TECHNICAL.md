@@ -138,12 +138,33 @@ Auth: `X-Admin-Key`
 ## 8. Безопасность
 
 - `admin_key` и `api_key` нод — секреты
-- xray-node API на нодах — только localhost; мастер подключается через VPN/SSH tunnel/reverse proxy
+- Мастер подключается к нодам по SSH (bootstrap) и HTTP `:9472` (только с IP мастера, через ufw)
+- SSH-ключ мастера: `/etc/xray-master/id_ed25519` — добавить на каждую новую ноду в `authorized_keys`
 - `public_url` — HTTPS с валидным сертификатом для продакшена
 
 ---
 
-## 9. Ограничения v1
+## 9. Provisioning нод (v2)
+
+```
+xray-master node add --name nl-1 --ip 203.0.113.10
+```
+
+1. SSH `root@IP` с ключом из `provision.ssh_key_path`
+2. `curl install.sh | bash` → 3x-ui + xray-node
+3. `api.listen: 0.0.0.0:9472` + `ufw allow from MASTER_IP`
+4. Сохранить `api_url`, `api_key`, `public_host` в SQLite
+
+После добавления ноды в `subscription.profiles`:
+
+```bash
+systemctl restart xray-master
+xray-master sync users
+```
+
+---
+
+## 10. Ограничения v1
 
 - Профили задаются в config.yaml (не в БД)
 - Агрегация трафика — сумма по нодам из profile entries
@@ -152,7 +173,7 @@ Auth: `X-Admin-Key`
 
 ---
 
-## 10. Связь с xray-node
+## 11. Связь с xray-node
 
 Мастер использует xray-node HTTP API:
 

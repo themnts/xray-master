@@ -47,12 +47,33 @@ xray-master serve --config /etc/xray-master/config.yaml
 
 ## Register a node
 
-Each VPS runs `xray-node` (API on localhost, reachable via SSH tunnel or reverse proxy).
+Master SSHs into the VPS and installs xray-node automatically. One-time: add the master's SSH public key to the node:
 
 ```bash
-xray-master node add \
-  --name nl-1 \
-  --api-url http://127.0.0.1:9472 \
+cat /etc/xray-master/id_ed25519.pub   # on master
+# → paste into root@NODE:~/.ssh/authorized_keys
+```
+
+Then on master:
+
+```bash
+xray-master node add --name nl-1 --ip 203.0.113.10
+# optional: --public-host nl.example.com  (default: IP)
+```
+
+Add the node to `subscription.profiles` in config, restart, sync users:
+
+```bash
+nano /etc/xray-master/config.yaml
+systemctl restart xray-master
+xray-master sync users
+```
+
+Manual registration (xray-node already installed) is still supported:
+
+```bash
+xray-master node add --name nl-1 \
+  --api-url http://203.0.113.10:9472 \
   --api-key NODE_API_KEY \
   --public-host nl.example.com
 ```

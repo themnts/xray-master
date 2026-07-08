@@ -11,6 +11,7 @@ import (
 	"github.com/thethoughtcriminal/xray-master/internal/config"
 	"github.com/thethoughtcriminal/xray-master/internal/db"
 	"github.com/thethoughtcriminal/xray-master/internal/nodeclient"
+	"github.com/thethoughtcriminal/xray-master/internal/provision"
 	"github.com/thethoughtcriminal/xray-master/internal/subscription"
 )
 
@@ -25,29 +26,81 @@ func New(cfg *config.Config, conn *sql.DB) *Master {
 
 type AddNodeInput struct {
 	Name       string
+	IP         string
 	APIURL     string
 	APIKey     string
 	PublicHost string
 }
 
 func (m *Master) AddNode(in AddNodeInput) (*db.Node, error) {
-	if in.Name == "" || in.APIURL == "" || in.APIKey == "" || in.PublicHost == "" {
-		return nil, fmt.Errorf("%w: name, api_url, api_key, and public_host are required", ErrValidation)
+	if in.Name == "" {
+		return nil, fmt.Errorf("%w: name is required", ErrValidation)
 	}
 	if _, err := db.GetNodeByName(m.conn, in.Name); err == nil {
 		return nil, fmt.Errorf("%w: node %q already exists", ErrConflict, in.Name)
 	} else if err != sql.ErrNoRows {
 		return nil, err
 	}
+
+	if strings.TrimSpace(in.IP) != "" {
+		return m.addNodeByIP(in)
+	}
+	return m.addNodeManual(in)
+}
+
+func (m *Master) addNodeManual(in AddNodeInput) (*db.Node, error) {
+	if in.APIURL == "" || in.APIKey == "" || in.PublicHost == "" {
+		return nil, fmt.Errorf("%w: api_url, api_key, and public_host are required (or use ip for auto-provision)", ErrValidation)
+	}
 	node := db.Node{
 		ID:         uuid.NewString(),
 		Name:       in.Name,
+		IP:         in.IP,
 		APIURL:     strings.TrimRight(in.APIURL, "/"),
 		APIKey:     in.APIKey,
 		PublicHost: in.PublicHost,
 		Enabled:    true,
+		Status:     db.NodeStatusReady,
 	}
 	if err := db.CreateNode(m.conn, node); err != nil {
+		return nil, err
+	}
+	return &node, nil
+}
+
+func (m *Master) addNodeByIP(in AddNodeInput) (*db.Node, error) {
+	ip := strings.TrimSpace(in.IP)
+	publicHost := strings.TrimSpace(in.PublicHost)
+	if publicHost == "" {
+		publicHost = ip
+	}
+
+	node := db.Node{
+		ID:         uuid.NewString(),
+		Name:       in.Name,
+		IP:         ip,
+		PublicHost: publicHost,
+		Enabled:    true,
+		Status:     db.NodeStatusProvisioning,
+	}
+	if err := db.CreateNode(m.conn, node); err != nil {
+		return nil, err
+	}
+
+	prov := provision.New(m.cfg.Provision)
+	result, err := prov.Provision(ip)
+	if err != nil {
+		node.Status = db.NodeStatusError
+		node.LastError = err.Error()
+		_ = db.UpdateNode(m.conn, node)
+		return nil, fmt.Errorf("provision node %s (%s): %w", in.Name, ip, err)
+	}
+
+	node.APIURL = result.APIURL
+	node.APIKey = result.APIKey
+	node.Status = db.NodeStatusReady
+	node.LastError = ""
+	if err := db.UpdateNode(m.conn, node); err != nil {
 		return nil, err
 	}
 	return &node, nil
@@ -75,8 +128,8 @@ type AddUserInput struct {
 }
 
 type AddUserResult struct {
-	User       db.User              `json:"user"`
-	NodeErrors map[string]string    `json:"node_errors,omitempty"`
+	User       db.User           `json:"user"`
+	NodeErrors map[string]string `json:"node_errors,omitempty"`
 }
 
 func (m *Master) AddUser(in AddUserInput) (*AddUserResult, error) {
@@ -112,6 +165,36 @@ func (m *Master) ListUsers() ([]db.User, error) {
 	return db.ListUsers(m.conn)
 }
 
+type SyncUsersResult struct {
+	UsersSynced int               `json:"users_synced"`
+	NodeErrors  map[string]string `json:"node_errors,omitempty"`
+}
+
+func (m *Master) SyncAllUsers() (*SyncUsersResult, error) {
+	users, err := db.ListUsers(m.conn)
+	if err != nil {
+		return nil, err
+	}
+	result := &SyncUsersResult{NodeErrors: map[string]string{}}
+	for _, user := range users {
+		if !user.Enabled {
+			continue
+		}
+		errs := m.syncUserToNodes(&user, true)
+		if len(errs) == 0 {
+			result.UsersSynced++
+			continue
+		}
+		for node, msg := range errs {
+			result.NodeErrors[user.Email+"/"+node] = msg
+		}
+	}
+	if len(result.NodeErrors) == 0 {
+		result.NodeErrors = nil
+	}
+	return result, nil
+}
+
 func (m *Master) SetUserEnabled(id string, enabled bool) error {
 	user, err := db.GetUserByID(m.conn, id)
 	if err == sql.ErrNoRows {
@@ -142,11 +225,11 @@ func (m *Master) DeleteUser(id string) error {
 }
 
 type UserStats struct {
-	Email      string                    `json:"email"`
-	Up         int64                     `json:"up"`
-	Down       int64                     `json:"down"`
-	ByNode     map[string]NodeTraffic    `json:"by_node"`
-	NodeErrors map[string]string         `json:"node_errors,omitempty"`
+	Email      string                 `json:"email"`
+	Up         int64                  `json:"up"`
+	Down       int64                  `json:"down"`
+	ByNode     map[string]NodeTraffic `json:"by_node"`
+	NodeErrors map[string]string      `json:"node_errors,omitempty"`
 }
 
 type NodeTraffic struct {
@@ -167,30 +250,24 @@ func (m *Master) UserStats(email string) (*UserStats, error) {
 		ByNode: map[string]NodeTraffic{},
 	}
 	nodeErrors := map[string]string{}
-	for _, profile := range m.cfg.Subscription.Profiles {
-		for _, entry := range profile.Entries {
-			node, err := db.GetNodeByName(m.conn, entry.Node)
-			if err != nil {
-				nodeErrors[entry.Node] = err.Error()
-				continue
-			}
-			if !node.Enabled {
-				continue
-			}
-			client := nodeclient.New(node.APIURL, node.APIKey)
-			traffic, err := client.ClientStats(entry.Inbound, user.Email)
-			if err != nil {
-				nodeErrors[node.Name] = err.Error()
-				continue
-			}
-			prev := stats.ByNode[node.Name]
-			prev.Inbound = entry.Inbound
-			prev.Up += traffic.Up
-			prev.Down += traffic.Down
-			stats.ByNode[node.Name] = prev
-			stats.Up += traffic.Up
-			stats.Down += traffic.Down
+	entries, err := m.profileEntries()
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		client := nodeclient.New(entry.Node.APIURL, entry.Node.APIKey)
+		traffic, err := client.ClientStats(entry.Inbound, user.Email)
+		if err != nil {
+			nodeErrors[entry.Node.Name] = err.Error()
+			continue
 		}
+		prev := stats.ByNode[entry.Node.Name]
+		prev.Inbound = entry.Inbound
+		prev.Up += traffic.Up
+		prev.Down += traffic.Down
+		stats.ByNode[entry.Node.Name] = prev
+		stats.Up += traffic.Up
+		stats.Down += traffic.Down
 	}
 	if len(nodeErrors) > 0 {
 		stats.NodeErrors = nodeErrors
@@ -230,8 +307,8 @@ func (m *Master) BuildSubscription(subToken string, userAgent string) (*Subscrip
 			return nil, err
 		}
 		return &SubscriptionResult{
-			Format: "happ_json",
-			Body:   body,
+			Format:  "happ_json",
+			Body:    body,
 			Headers: subscription.Headers(user, m.cfg.Subscription.UpdateIntervalHours, statsFromContext(ctx)),
 		}, nil
 	}
@@ -241,48 +318,69 @@ func (m *Master) BuildSubscription(subToken string, userAgent string) (*Subscrip
 		return nil, err
 	}
 	return &SubscriptionResult{
-		Format: "base64_links",
-		Body:   body,
+		Format:  "base64_links",
+		Body:    body,
 		Headers: subscription.Headers(user, m.cfg.Subscription.UpdateIntervalHours, statsFromContext(ctx)),
 	}, nil
 }
 
-func (m *Master) syncUserToNodes(user *db.User, enable bool) map[string]string {
-	errs := map[string]string{}
+type profileEntry struct {
+	Node    db.Node
+	Inbound string
+}
+
+func (m *Master) profileEntries() ([]profileEntry, error) {
 	nodes, err := db.ListNodes(m.conn)
 	if err != nil {
-		return map[string]string{"_db": err.Error()}
+		return nil, err
 	}
+	byName := map[string]db.Node{}
+	for _, n := range nodes {
+		byName[n.Name] = n
+	}
+
 	seen := map[string]struct{}{}
+	var out []profileEntry
 	for _, profile := range m.cfg.Subscription.Profiles {
 		for _, entry := range profile.Entries {
-			if _, ok := seen[entry.Node]; ok {
+			key := entry.Node + "/" + entry.Inbound
+			if _, ok := seen[key]; ok {
 				continue
 			}
-			seen[entry.Node] = struct{}{}
-			var node *db.Node
-			for i := range nodes {
-				if nodes[i].Name == entry.Node {
-					node = &nodes[i]
-					break
-				}
-			}
-			if node == nil || !node.Enabled {
+			seen[key] = struct{}{}
+			node, ok := byName[entry.Node]
+			if !ok {
 				continue
 			}
-			client := nodeclient.New(node.APIURL, node.APIKey)
-			if enable {
-				if _, err := client.AddClient(nodeclient.AddClientRequest{
-					InboundRemark: entry.Inbound,
-					Email:         user.Email,
-					UUID:          user.UUID,
-				}); err != nil {
-					errs[node.Name] = err.Error()
-				}
-			} else {
-				if err := client.SetClientEnabled(entry.Inbound, user.Email, false); err != nil {
-					errs[node.Name] = err.Error()
-				}
+			if !node.Enabled || node.Status != db.NodeStatusReady {
+				continue
+			}
+			out = append(out, profileEntry{Node: node, Inbound: entry.Inbound})
+		}
+	}
+	return out, nil
+}
+
+func (m *Master) syncUserToNodes(user *db.User, enable bool) map[string]string {
+	errs := map[string]string{}
+	entries, err := m.profileEntries()
+	if err != nil {
+		return map[string]string{"_profiles": err.Error()}
+	}
+	for _, entry := range entries {
+		client := nodeclient.New(entry.Node.APIURL, entry.Node.APIKey)
+		key := entry.Node.Name + "/" + entry.Inbound
+		if enable {
+			if _, err := client.AddClient(nodeclient.AddClientRequest{
+				InboundRemark: entry.Inbound,
+				Email:         user.Email,
+				UUID:          user.UUID,
+			}); err != nil {
+				errs[key] = err.Error()
+			}
+		} else {
+			if err := client.SetClientEnabled(entry.Inbound, user.Email, false); err != nil {
+				errs[key] = err.Error()
 			}
 		}
 	}
@@ -302,7 +400,7 @@ func (m *Master) loadBuildContext(user *db.User) (*subscription.BuildContext, er
 		return nil, err
 	}
 	for _, node := range nodes {
-		if !node.Enabled {
+		if !node.Enabled || node.Status != db.NodeStatusReady {
 			continue
 		}
 		client := nodeclient.New(node.APIURL, node.APIKey)

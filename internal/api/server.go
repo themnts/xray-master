@@ -40,6 +40,7 @@ func New(cfg *config.Config, master *service.Master) *Server {
 		r.Post("/users/{id}/disable", s.disableUser)
 		r.Delete("/users/{id}", s.deleteUser)
 		r.Get("/users/{email}/stats", s.userStats)
+		r.Post("/sync/users", s.syncUsers)
 	})
 
 	s.http = &http.Server{Addr: cfg.Server.Listen, Handler: r}
@@ -94,6 +95,7 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 
 type addNodeRequest struct {
 	Name       string `json:"name"`
+	IP         string `json:"ip"`
 	APIURL     string `json:"api_url"`
 	APIKey     string `json:"api_key"`
 	PublicHost string `json:"public_host"`
@@ -107,6 +109,7 @@ func (s *Server) addNode(w http.ResponseWriter, r *http.Request) {
 	}
 	node, err := s.master.AddNode(service.AddNodeInput{
 		Name:       req.Name,
+		IP:         req.IP,
 		APIURL:     req.APIURL,
 		APIKey:     req.APIKey,
 		PublicHost: req.PublicHost,
@@ -194,6 +197,15 @@ func (s *Server) userStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
+}
+
+func (s *Server) syncUsers(w http.ResponseWriter, r *http.Request) {
+	result, err := s.master.SyncAllUsers()
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

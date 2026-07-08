@@ -11,7 +11,16 @@ const DefaultPath = "/etc/xray-master/config.yaml"
 
 type Config struct {
 	Server       ServerConfig       `yaml:"server"`
+	Provision    ProvisionConfig    `yaml:"provision"`
 	Subscription SubscriptionConfig `yaml:"subscription"`
+}
+
+type ProvisionConfig struct {
+	SSHUser               string `yaml:"ssh_user"`
+	SSHKeyPath            string `yaml:"ssh_key_path"`
+	MasterIP              string `yaml:"master_ip"`
+	NodeAPIPort           int    `yaml:"node_api_port"`
+	XRayNodeInstallScript string `yaml:"xray_node_install_script"`
 }
 
 type ServerConfig struct {
@@ -59,6 +68,15 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Subscription.UpdateIntervalHours <= 0 {
 		cfg.Subscription.UpdateIntervalHours = 12
+	}
+	if cfg.Provision.SSHUser == "" {
+		cfg.Provision.SSHUser = "root"
+	}
+	if cfg.Provision.SSHKeyPath == "" {
+		cfg.Provision.SSHKeyPath = "/etc/xray-master/id_ed25519"
+	}
+	if cfg.Provision.NodeAPIPort <= 0 {
+		cfg.Provision.NodeAPIPort = 9472
 	}
 	return &cfg, nil
 }

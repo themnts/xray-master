@@ -75,6 +75,19 @@ patch_config_value() {
   mv "${tmp}" "${file}"
 }
 
+write_ssh_key() {
+  local key="/etc/xray-master/id_ed25519"
+  if [[ -f "${key}" ]]; then
+    echo "SSH key exists: ${key}"
+    return
+  fi
+  ssh-keygen -t ed25519 -N "" -f "${key}"
+  chmod 600 "${key}"
+  echo "Generated SSH key for node provisioning: ${key}.pub"
+  echo "Add this public key to root@<node>: ~/.ssh/authorized_keys"
+  cat "${key}.pub"
+}
+
 write_config() {
   mkdir -p /etc/xray-master "${DATA_DIR}"
   if [[ ! -f "${CONFIG_PATH}" ]]; then
@@ -204,17 +217,21 @@ Admin:   X-Admin-Key: ${admin_key}
 2) Verify local API:
    curl http://${LISTEN}/healthz
 
-3) Register VPN nodes (xray-node API must be reachable from this host):
-   xray-master node add \\
-     --name nl-1 \\
-     --api-url http://127.0.0.1:9472 \\
-     --api-key NODE_API_KEY \\
-     --public-host nl.example.com
+3) Add master's SSH public key to each new node (one-time bootstrap):
+   cat /etc/xray-master/id_ed25519.pub
+   # paste into root@NODE:~/.ssh/authorized_keys
 
-4) Add a user:
+4) Register VPN nodes (master SSHs in and installs xray-node):
+   xray-master node add --name nl-1 --ip NODE_IP
+
+5) Add node to subscription.profiles in ${CONFIG_PATH}, then:
+   systemctl restart xray-master
+   xray-master sync users
+
+6) Add a user:
    xray-master user add --email user@example.com
 
-5) Public subscription URL base:
+7) Public subscription URL base:
    ${public_url}/sub/<token>
 
 HTTPS: point DNS for your domain to this server, then either:
@@ -233,6 +250,7 @@ main() {
   clone_or_update_repo
   build_binary
   write_config
+  write_ssh_key
   write_systemd
   if should_install_caddy; then
     install_caddy_reverse_proxy

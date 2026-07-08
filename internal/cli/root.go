@@ -23,6 +23,7 @@ func init() {
 	rootCmd.AddCommand(newServeCmd())
 	rootCmd.AddCommand(newNodeCmd())
 	rootCmd.AddCommand(newUserCmd())
+	rootCmd.AddCommand(newSyncCmd())
 }
 
 func loadConfigPath() string {

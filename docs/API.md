@@ -136,9 +136,52 @@ List registered VPN nodes.
 
 ### `POST /nodes`
 
-Register a new node.
+Register a node. **Auto-provision** when `ip` is set (master SSHs in and installs xray-node). **Manual** when `api_url` + `api_key` are set instead.
 
-**Request body:**
+**Request body (auto-provision):**
+
+```json
+{
+  "name": "nl-1",
+  "ip": "203.0.113.10",
+  "public_host": "nl.example.com"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Unique name; must match `subscription.profiles` |
+| `ip` | auto mode | Node VPS IP; triggers SSH provisioning (~2 min) |
+| `public_host` | no | Hostname in client links (default: `ip`) |
+| `api_url` | manual mode | xray-node API base URL |
+| `api_key` | manual mode | xray-node `X-API-Key` |
+
+**201:** created `Node` object (includes `IP`, `Status`: `ready` | `provisioning` | `error`).
+
+**409:** node name already exists.
+
+**502/500:** provisioning failed (SSH, install, or API unreachable).
+
+---
+
+### `POST /sync/users`
+
+Re-provision all enabled users on every node/inbound pair from `subscription.profiles`. Run after adding a node to config.
+
+**Response `200`:**
+
+```json
+{
+  "users_synced": 12,
+  "node_errors": {
+    "user@example.com/nl-1/vless-reality": "..."
+  }
+}
+```
+
+---
+
+### `POST /nodes` (manual example)
 
 ```json
 {

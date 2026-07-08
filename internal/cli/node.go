@@ -26,38 +26,44 @@ func newNodeCmd() *cobra.Command {
 				fatal(err)
 			}
 			for _, n := range nodes {
-				fmt.Printf("%s\t%s\t%s\tenabled=%v\n", n.ID, n.Name, n.PublicHost, n.Enabled)
+				fmt.Printf("%s\t%s\tip=%s\t%s\tstatus=%s\tenabled=%v\n",
+					n.ID, n.Name, n.IP, n.PublicHost, n.Status, n.Enabled)
 			}
 		},
 	})
-	cmd.AddCommand(&cobra.Command{
+	add := &cobra.Command{
 		Use:   "add",
-		Short: "Register a node",
+		Short: "Register a node (auto-provision via SSH when --ip is set)",
 		Run: func(cmd *cobra.Command, args []string) {
 			master, cleanup := openMaster()
 			defer cleanup()
 			name, _ := cmd.Flags().GetString("name")
+			ip, _ := cmd.Flags().GetString("ip")
 			apiURL, _ := cmd.Flags().GetString("api-url")
 			apiKey, _ := cmd.Flags().GetString("api-key")
 			host, _ := cmd.Flags().GetString("public-host")
+			fmt.Printf("Adding node %q", name)
+			if ip != "" {
+				fmt.Printf(" (provisioning %s via SSH)...", ip)
+			}
+			fmt.Println()
 			node, err := master.AddNode(service.AddNodeInput{
-				Name: name, APIURL: apiURL, APIKey: apiKey, PublicHost: host,
+				Name: name, IP: ip, APIURL: apiURL, APIKey: apiKey, PublicHost: host,
 			})
 			if err != nil {
 				fatal(err)
 			}
-			fmt.Printf("node added: %s (%s)\n", node.Name, node.ID)
+			fmt.Printf("node added: %s (%s) status=%s api=%s\n", node.Name, node.ID, node.Status, node.APIURL)
+			fmt.Println("If the node is new in subscription.profiles, run: xray-master sync users")
 		},
-	})
-	add := cmd.Commands()[1]
-	add.Flags().String("name", "", "node name")
-	add.Flags().String("api-url", "", "xray-node API base URL")
-	add.Flags().String("api-key", "", "xray-node API key")
-	add.Flags().String("public-host", "", "public hostname for client links")
+	}
+	add.Flags().String("name", "", "node name (must match subscription.profiles entries)")
+	add.Flags().String("ip", "", "node VPS IP — master SSHs in and installs xray-node")
+	add.Flags().String("api-url", "", "manual mode: xray-node API base URL")
+	add.Flags().String("api-key", "", "manual mode: xray-node API key")
+	add.Flags().String("public-host", "", "hostname in client links (default: node IP)")
 	_ = add.MarkFlagRequired("name")
-	_ = add.MarkFlagRequired("api-url")
-	_ = add.MarkFlagRequired("api-key")
-	_ = add.MarkFlagRequired("public-host")
+	cmd.AddCommand(add)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "remove [id]",
