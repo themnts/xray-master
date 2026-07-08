@@ -61,11 +61,16 @@ xray-master node add --name nl-1 --ip 203.0.113.10
 # optional: --public-host nl.example.com  (default: IP)
 ```
 
-Add the node to `subscription.profiles` in config, restart, sync users:
+Add the node to `subscription.profiles` in config when it should appear in user subscriptions, then restart:
 
 ```bash
 nano /etc/xray-master/config.yaml
 systemctl restart xray-master
+```
+
+New users are provisioned on all registered nodes automatically. To backfill existing users on a new node:
+
+```bash
 xray-master sync users
 ```
 

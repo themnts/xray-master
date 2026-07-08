@@ -54,7 +54,7 @@ func newNodeCmd() *cobra.Command {
 				fatal(err)
 			}
 			fmt.Printf("node added: %s (%s) status=%s api=%s\n", node.Name, node.ID, node.Status, node.APIURL)
-			fmt.Println("If the node is new in subscription.profiles, run: xray-master sync users")
+			fmt.Println("Run: xray-master sync users  (to provision existing users on the new node)")
 		},
 	}
 	add.Flags().String("name", "", "node name (must match subscription.profiles entries)")

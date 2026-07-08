@@ -113,9 +113,11 @@ subscription:
 ## 6. Добавление пользователя
 
 1. Создать запись в SQLite
-2. Для каждой уникальной ноды из `subscription.profiles`:
-   - `POST /clients` на xray-node с `email`, `uuid`, `inbound_remark`
+2. Для каждой **зарегистрированной ready-ноды** — на **каждый enabled inbound**:
+   - `POST /clients` на xray-node с `email`, `uuid`, `comment: managed by xray-master`
 3. Вернуть URL: `{public_url}/sub/{sub_token}`
+
+Профили подписки (`subscription.profiles`) влияют только на содержимое `/sub/{token}`, не на провижинг.
 
 Один email + один UUID на всех нодах (учёт трафика Xray по email).
 

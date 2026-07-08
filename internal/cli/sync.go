@@ -13,9 +13,10 @@ func newSyncCmd() *cobra.Command {
 	}
 	cmd.AddCommand(&cobra.Command{
 		Use:   "users",
-		Short: "Provision all users on nodes from subscription profiles",
-		Long: `Re-runs client provisioning for every enabled user on all node/inbound
-pairs listed in subscription.profiles. Run after adding a node to config.yaml.`,
+		Short: "Provision all users on all registered nodes",
+		Long: `Re-runs client provisioning for every enabled user on every enabled
+inbound of every registered ready node. Subscription profiles only affect
+what appears in /sub/{token}, not which nodes receive clients.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			master, cleanup := openMaster()
 			defer cleanup()

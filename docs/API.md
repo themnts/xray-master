@@ -166,7 +166,8 @@ Register a node. **Auto-provision** when `ip` is set (master SSHs in and install
 
 ### `POST /sync/users`
 
-Re-provision all enabled users on every node/inbound pair from `subscription.profiles`. Run after adding a node to config.
+Re-provision all enabled users on every enabled inbound of every registered ready node.
+Subscription profiles only affect `/sub/{token}` output, not provisioning.
 
 **Response `200`:**
 

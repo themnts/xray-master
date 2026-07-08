@@ -15,6 +15,8 @@ import (
 	"github.com/thethoughtcriminal/xray-master/internal/subscription"
 )
 
+const MasterClientComment = "managed by xray-master"
+
 type Master struct {
 	cfg  *config.Config
 	conn *sql.DB
@@ -361,25 +363,60 @@ func (m *Master) profileEntries() ([]profileEntry, error) {
 	return out, nil
 }
 
+type syncTarget struct {
+	Node    db.Node
+	Inbound string
+}
+
+// syncTargets returns every enabled inbound on every registered ready node.
+// Subscription profiles do not affect provisioning.
+func (m *Master) syncTargets() ([]syncTarget, map[string]string) {
+	nodes, err := db.ListNodes(m.conn)
+	if err != nil {
+		return nil, map[string]string{"_db": err.Error()}
+	}
+	nodeErrors := map[string]string{}
+	var out []syncTarget
+	for _, node := range nodes {
+		if !node.Enabled || node.Status != db.NodeStatusReady {
+			continue
+		}
+		client := nodeclient.New(node.APIURL, node.APIKey)
+		inbounds, err := client.ListInbounds()
+		if err != nil {
+			nodeErrors[node.Name] = err.Error()
+			continue
+		}
+		for _, ib := range inbounds {
+			if !ib.Enable {
+				continue
+			}
+			out = append(out, syncTarget{Node: node, Inbound: ib.Remark})
+		}
+	}
+	return out, nodeErrors
+}
+
 func (m *Master) syncUserToNodes(user *db.User, enable bool) map[string]string {
 	errs := map[string]string{}
-	entries, err := m.profileEntries()
-	if err != nil {
-		return map[string]string{"_profiles": err.Error()}
+	targets, nodeErrors := m.syncTargets()
+	for k, v := range nodeErrors {
+		errs[k+"/_connect"] = v
 	}
-	for _, entry := range entries {
-		client := nodeclient.New(entry.Node.APIURL, entry.Node.APIKey)
-		key := entry.Node.Name + "/" + entry.Inbound
+	for _, target := range targets {
+		client := nodeclient.New(target.Node.APIURL, target.Node.APIKey)
+		key := target.Node.Name + "/" + target.Inbound
 		if enable {
 			if _, err := client.AddClient(nodeclient.AddClientRequest{
-				InboundRemark: entry.Inbound,
+				InboundRemark: target.Inbound,
 				Email:         user.Email,
 				UUID:          user.UUID,
+				Comment:       MasterClientComment,
 			}); err != nil {
 				errs[key] = err.Error()
 			}
 		} else {
-			if err := client.SetClientEnabled(entry.Inbound, user.Email, false); err != nil {
+			if err := client.SetClientEnabled(target.Inbound, user.Email, false); err != nil {
 				errs[key] = err.Error()
 			}
 		}

@@ -83,6 +83,7 @@ type AddClientRequest struct {
 	InboundRemark string `json:"inbound_remark"`
 	Email         string `json:"email"`
 	UUID          string `json:"uuid"`
+	Comment       string `json:"comment"`
 	Enable        bool   `json:"-"`
 }
 
@@ -105,6 +106,9 @@ func (c *Client) AddClient(req AddClientRequest) (*AddedClient, error) {
 		"inbound_remark": req.InboundRemark,
 		"email":          req.Email,
 		"uuid":           req.UUID,
+	}
+	if req.Comment != "" {
+		body["comment"] = req.Comment
 	}
 	var out AddedClient
 	if err := c.postJSON("/clients", body, &out); err != nil {
