@@ -9,7 +9,8 @@ Subscription master server for a cluster of [xray-node](https://github.com/theth
   - `User-Agent: Happ/*`: JSON array of full Xray configs
 - Profile groups in config: `smart_multi` (balancer + observatory) or `single` (one outbound per config)
 
-**Technical spec:** [docs/TECHNICAL.md](docs/TECHNICAL.md)
+**Technical spec:** [docs/TECHNICAL.md](docs/TECHNICAL.md)  
+**HTTP API:** [docs/API.md](docs/API.md) · [OpenAPI](docs/openapi.yaml)
 
 ## Install (production)
 
@@ -74,19 +75,8 @@ xray-master user add --email user@example.com
 
 Auth: `X-Admin-Key: <server.admin_key>`
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/healthz` | Health check |
-| GET | `/sub/{token}` | Public subscription (no auth) |
-| GET | `/nodes` | List nodes |
-| POST | `/nodes` | Register node |
-| DELETE | `/nodes/{id}` | Remove node |
-| GET | `/users` | List users |
-| POST | `/users` | Add user on all nodes |
-| GET | `/users/{email}/stats` | Aggregate traffic |
-| POST | `/users/{id}/enable` | Enable user |
-| POST | `/users/{id}/disable` | Disable user |
-| DELETE | `/users/{id}` | Delete user |
+Full contract with request/response schemas: **[docs/API.md](docs/API.md)**  
+OpenAPI 3 spec for Swagger/Postman: **[docs/openapi.yaml](docs/openapi.yaml)**
 
 ## Development
 

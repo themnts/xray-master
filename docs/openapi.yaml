@@ -1,0 +1,557 @@
+openapi: 3.0.3
+info:
+  title: xray-master API
+  description: |
+    HTTP API for the xray-master subscription server.
+
+    - **Public** endpoints: health check and subscription delivery.
+    - **Admin** endpoints: require header `X-Admin-Key` (value from `server.admin_key` in config).
+
+    Subscription token (`sub_token`) is generated when a user is created and used in `GET /sub/{token}`.
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://127.0.0.1:9480
+    description: Default local listen address (see `server.listen` in config)
+
+tags:
+  - name: Public
+    description: No authentication required
+  - name: Admin
+    description: Requires `X-Admin-Key` header
+
+paths:
+  /healthz:
+    get:
+      tags: [Public]
+      summary: Health check
+      operationId: healthz
+      responses:
+        "200":
+          description: Server is running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+
+  /sub/{token}:
+    get:
+      tags: [Public]
+      summary: User subscription
+      description: |
+        Returns VPN subscription for the user identified by `sub_token`.
+
+        **Content negotiation** (by `User-Agent`):
+        - Contains `Happ` (case-insensitive) → JSON array of Xray configs (`application/json`)
+        - Otherwise → base64-encoded share links (`text/plain`)
+
+        Response may include Happ subscription headers:
+        - `profile-update-interval`
+        - `routing-enable`
+        - `subscription-userinfo` (when traffic/expiry limits are set)
+      operationId: getSubscription
+      parameters:
+        - $ref: "#/components/parameters/SubToken"
+        - name: User-Agent
+          in: header
+          schema:
+            type: string
+          description: Use `Happ/...` to receive JSON configs instead of base64 links
+      responses:
+        "200":
+          description: Subscription payload
+          headers:
+            profile-update-interval:
+              schema:
+                type: string
+              description: Hours between client refresh (from config)
+            routing-enable:
+              schema:
+                type: string
+              example: "true"
+            subscription-userinfo:
+              schema:
+                type: string
+              description: "Happ format: upload=N; download=N; total=N; expire=N (expire in seconds)"
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Base64-encoded `vless://` / `hysteria2://` lines
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                description: Array of Xray JSON configs (one per profile / entry)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /nodes:
+    get:
+      tags: [Admin]
+      summary: List nodes
+      operationId: listNodes
+      security:
+        - AdminKey: []
+      responses:
+        "200":
+          description: Registered VPN nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Node"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags: [Admin]
+      summary: Register node
+      operationId: addNode
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddNodeRequest"
+      responses:
+        "201":
+          description: Node created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /nodes/{id}:
+    delete:
+      tags: [Admin]
+      summary: Remove node
+      operationId: deleteNode
+      security:
+        - AdminKey: []
+      parameters:
+        - $ref: "#/components/parameters/NodeID"
+      responses:
+        "200":
+          description: Node deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusDeleted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /users:
+    get:
+      tags: [Admin]
+      summary: List users
+      operationId: listUsers
+      security:
+        - AdminKey: []
+      responses:
+        "200":
+          description: Subscription users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags: [Admin]
+      summary: Add user
+      description: |
+        Creates user in the database and provisions the client on all unique nodes
+        referenced in `subscription.profiles` (config.yaml).
+
+        If some nodes fail, user is still created; failures are returned in `node_errors`.
+      operationId: addUser
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddUserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /users/{id}/enable:
+    post:
+      tags: [Admin]
+      summary: Enable user
+      description: Enables user in DB and on all profile nodes. `id` is user UUID (`User.ID`), not email.
+      operationId: enableUser
+      security:
+        - AdminKey: []
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: User enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnabledResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /users/{id}/disable:
+    post:
+      tags: [Admin]
+      summary: Disable user
+      description: Disables user in DB and on all profile nodes. `id` is user UUID (`User.ID`), not email.
+      operationId: disableUser
+      security:
+        - AdminKey: []
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: User disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnabledResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /users/{id}:
+    delete:
+      tags: [Admin]
+      summary: Delete user
+      description: |
+        Removes user from DB and disables client on all profile nodes.
+        Does not fully delete the client record on xray-node instances.
+      operationId: deleteUser
+      security:
+        - AdminKey: []
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusDeleted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /users/{email}/stats:
+    get:
+      tags: [Admin]
+      summary: Aggregate traffic stats
+      description: |
+        Sums traffic across nodes listed in `subscription.profiles`.
+        `email` must be URL-encoded (e.g. `user%40example.com`).
+      operationId: userStats
+      security:
+        - AdminKey: []
+      parameters:
+        - $ref: "#/components/parameters/UserEmail"
+      responses:
+        "200":
+          description: Traffic statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+components:
+  securitySchemes:
+    AdminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+      description: Value of `server.admin_key` from `/etc/xray-master/config.yaml`
+
+  parameters:
+    SubToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+      description: User subscription token (`User.SubToken`, 32 hex chars)
+    NodeID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Node UUID (`Node.ID`)
+    UserID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: User UUID (`User.ID`), not email
+    UserEmail:
+      name: email
+      in: path
+      required: true
+      schema:
+        type: string
+        format: email
+      description: User email (URL-encode `@` as `%40`)
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    StatusDeleted:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: deleted
+
+    EnabledResponse:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+
+    Node:
+      type: object
+      description: |
+        JSON field names use Go default encoding (PascalCase) because structs have no `json` tags.
+      properties:
+        ID:
+          type: string
+          format: uuid
+        Name:
+          type: string
+          example: nl-1
+        APIURL:
+          type: string
+          example: http://127.0.0.1:9472
+        APIKey:
+          type: string
+        PublicHost:
+          type: string
+          example: nl.example.com
+        Enabled:
+          type: boolean
+        CreatedAt:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      description: JSON field names use Go default encoding (PascalCase).
+      properties:
+        ID:
+          type: string
+          format: uuid
+        Email:
+          type: string
+          format: email
+        UUID:
+          type: string
+          format: uuid
+          description: Xray client UUID (same on all nodes)
+        SubToken:
+          type: string
+          description: Token for `GET /sub/{token}` (32 hex chars)
+        Enabled:
+          type: boolean
+        ExpiryTime:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds; 0 = no expiry
+        TotalBytes:
+          type: integer
+          format: int64
+          description: Traffic limit in bytes; 0 = unlimited
+        Note:
+          type: string
+        CreatedAt:
+          type: string
+          format: date-time
+
+    AddNodeRequest:
+      type: object
+      required: [name, api_url, api_key, public_host]
+      properties:
+        name:
+          type: string
+          description: Unique node name (referenced in subscription profiles)
+        api_url:
+          type: string
+          description: xray-node API base URL
+        api_key:
+          type: string
+          description: xray-node `X-API-Key`
+        public_host:
+          type: string
+          description: Hostname used in client share links
+
+    AddUserRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Same email on all nodes (Xray traffic accounting)
+        uuid:
+          type: string
+          format: uuid
+          description: Optional fixed client UUID; generated if omitted
+        expiry_time:
+          type: integer
+          format: int64
+          description: Unix ms; 0 = no expiry
+        total_bytes:
+          type: integer
+          format: int64
+          description: Traffic limit; 0 = unlimited
+        note:
+          type: string
+
+    AddUserResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        node_errors:
+          type: object
+          additionalProperties:
+            type: string
+          description: Per-node provisioning errors (user still created)
+
+    UserStats:
+      type: object
+      required: [email, up, down, by_node]
+      properties:
+        email:
+          type: string
+        up:
+          type: integer
+          format: int64
+        down:
+          type: integer
+          format: int64
+        by_node:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/NodeTraffic"
+        node_errors:
+          type: object
+          additionalProperties:
+            type: string
+
+    NodeTraffic:
+      type: object
+      properties:
+        inbound:
+          type: string
+        up:
+          type: integer
+          format: int64
+        down:
+          type: integer
+          format: int64
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Invalid or missing admin key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: invalid admin key
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Duplicate resource
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadGateway:
+      description: Upstream xray-node error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
