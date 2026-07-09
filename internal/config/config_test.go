@@ -16,6 +16,8 @@ server:
   admin_key: test-key
   public_url: https://sub.example.com
   subscription_path: `+subPath+`
+enroll:
+  master_ip: "203.0.113.1"
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -43,31 +45,24 @@ profiles:
 	if cfg.Subscription.UpdateIntervalHours != 12 {
 		t.Fatalf("update interval: %d", cfg.Subscription.UpdateIntervalHours)
 	}
+	if cfg.Enroll.MasterIP != "203.0.113.1" {
+		t.Fatalf("master_ip: %q", cfg.Enroll.MasterIP)
+	}
 }
 
-func TestLoadInlineSubscriptionLegacy(t *testing.T) {
+func TestLoadRequiresSubscriptionFile(t *testing.T) {
 	dir := t.TempDir()
 	mainPath := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(mainPath, []byte(`
 server:
   admin_key: test-key
   public_url: https://sub.example.com
-subscription:
-  profiles:
-  - name: inline
-    mode: single
-    entries:
-    - node: nl-1
-      inbound: vless-reality
+  subscription_path: /nonexistent/subscription.yaml
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(mainPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Subscription.Profiles[0].Name != "inline" {
-		t.Fatalf("expected inline profile, got %q", cfg.Subscription.Profiles[0].Name)
+	if _, err := Load(mainPath); err == nil {
+		t.Fatal("expected error for missing subscription file")
 	}
 }

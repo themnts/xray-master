@@ -171,8 +171,6 @@ enroll:
   enroll_ttl_hours: 24
 ```
 
-Старый ключ `provision:` по-прежнему читается как alias.
-
 После регистрации вся операционка — HTTP `:9472` (как раньше).
 
 Profiles в subscription.yaml влияют только на `/sub/{token}`, не на провижинг users.

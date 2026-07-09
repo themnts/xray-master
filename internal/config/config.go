@@ -14,9 +14,9 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig       `yaml:"server"`
-	Enroll       EnrollConfig       `yaml:"enroll"`
-	Subscription SubscriptionConfig `yaml:"-"`
+	Server       ServerConfig
+	Enroll       EnrollConfig
+	Subscription SubscriptionConfig
 }
 
 type EnrollConfig struct {
@@ -51,10 +51,8 @@ type ProfileEntry struct {
 }
 
 type configFile struct {
-	Server       ServerConfig       `yaml:"server"`
-	Enroll       EnrollConfig       `yaml:"enroll"`
-	Provision    EnrollConfig       `yaml:"provision"` // deprecated alias for enroll
-	Subscription SubscriptionConfig `yaml:"subscription"`
+	Server ServerConfig `yaml:"server"`
+	Enroll EnrollConfig `yaml:"enroll"`
 }
 
 func Load(path string) (*Config, error) {
@@ -70,23 +68,17 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	cfg := Config{
-		Server:       file.Server,
-		Enroll:       file.Enroll,
-		Subscription: file.Subscription,
+		Server: file.Server,
+		Enroll: file.Enroll,
 	}
-	mergeLegacyProvision(&cfg, file.Provision)
 	applyDefaults(&cfg, path)
 
-	if len(cfg.Subscription.Profiles) > 0 {
-		applySubscriptionDefaults(&cfg.Subscription)
-	} else {
-		sub, err := loadSubscriptionFile(cfg.Server.SubscriptionPath)
-		if err != nil {
-			return nil, err
-		}
-		cfg.Subscription = *sub
-		applySubscriptionDefaults(&cfg.Subscription)
+	sub, err := loadSubscriptionFile(cfg.Server.SubscriptionPath)
+	if err != nil {
+		return nil, err
 	}
+	cfg.Subscription = *sub
+	applySubscriptionDefaults(&cfg.Subscription)
 	return &cfg, nil
 }
 
@@ -100,15 +92,6 @@ func loadSubscriptionFile(path string) (*SubscriptionConfig, error) {
 		return nil, fmt.Errorf("parse subscription %s: %w", path, err)
 	}
 	return &sub, nil
-}
-
-func mergeLegacyProvision(cfg *Config, legacy EnrollConfig) {
-	if cfg.Enroll.MasterIP == "" {
-		cfg.Enroll.MasterIP = legacy.MasterIP
-	}
-	if cfg.Enroll.EnrollTTLHours <= 0 && legacy.EnrollTTLHours > 0 {
-		cfg.Enroll.EnrollTTLHours = legacy.EnrollTTLHours
-	}
 }
 
 func applyDefaults(cfg *Config, mainPath string) {

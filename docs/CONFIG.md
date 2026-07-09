@@ -41,14 +41,6 @@ Settings for node self-registration (`POST /nodes/enroll`, `xray-node join`).
 | `master_ip` | string | no | `""` | Master public IP. Appended to `xray-node join --master-ip` so the node can run `ufw allow from <ip> to any port 9472`. |
 | `enroll_ttl_hours` | int | no | `24` | Lifetime of one-time enroll tokens created by `xray-master node token create`. |
 
-### Deprecated: `provision`
-
-Alias for `enroll`. Still read for backward compatibility; prefer `enroll`.
-
-### Deprecated: inline `subscription`
-
-A `subscription:` block inside `config.yaml` is still supported. If present (with profiles or `update_interval_hours`), it takes precedence over `subscription_path`. New installs should use a separate file.
-
 ---
 
 ## subscription.yaml
@@ -128,7 +120,7 @@ On `xray-master serve`, config is validated:
 - Missing `server.admin_key` or `server.public_url`
 - Profile without `name`, invalid `mode`, empty `entries`
 - Entry without `node` or `inbound`
-- Unreadable or missing subscription file (when not inlined in config)
+- Unreadable or missing subscription file
 
 ---
 
