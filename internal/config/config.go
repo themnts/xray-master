@@ -16,11 +16,9 @@ type Config struct {
 }
 
 type ProvisionConfig struct {
-	SSHUser               string `yaml:"ssh_user"`
-	SSHKeyPath            string `yaml:"ssh_key_path"`
-	MasterIP              string `yaml:"master_ip"`
-	NodeAPIPort           int    `yaml:"node_api_port"`
-	XRayNodeInstallScript string `yaml:"xray_node_install_script"`
+	MasterIP       string `yaml:"master_ip"`
+	EnrollTTLHours int    `yaml:"enroll_ttl_hours"`
+	NodeAPIPort    int    `yaml:"node_api_port"`
 }
 
 type ServerConfig struct {
@@ -69,14 +67,11 @@ func Load(path string) (*Config, error) {
 	if cfg.Subscription.UpdateIntervalHours <= 0 {
 		cfg.Subscription.UpdateIntervalHours = 12
 	}
-	if cfg.Provision.SSHUser == "" {
-		cfg.Provision.SSHUser = "root"
-	}
-	if cfg.Provision.SSHKeyPath == "" {
-		cfg.Provision.SSHKeyPath = "/etc/xray-master/id_ed25519"
-	}
 	if cfg.Provision.NodeAPIPort <= 0 {
 		cfg.Provision.NodeAPIPort = 9472
+	}
+	if cfg.Provision.EnrollTTLHours <= 0 {
+		cfg.Provision.EnrollTTLHours = 24
 	}
 	return &cfg, nil
 }

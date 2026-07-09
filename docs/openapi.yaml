@@ -4,7 +4,7 @@ info:
   description: |
     HTTP API for the xray-master subscription server.
 
-    - **Public** endpoints: health check and subscription delivery.
+    - **Public** endpoints: health check, subscription delivery, and node self-enrollment (`POST /nodes/enroll`).
     - **Admin** endpoints: require header `X-Admin-Key` (value from `server.admin_key` in config).
 
     Subscription token (`sub_token`) is generated when a user is created and used in `GET /sub/{token}`.
@@ -135,6 +135,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Node"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /nodes/enroll:
+    post:
+      tags: [Public]
+      summary: Node self-enrollment
+      description: |
+        Called by xray-node during `join`. Consumes a one-time enroll token and registers the node.
+        No admin key required. Master verifies the node by calling `GET /inbounds` on `api_url`.
+      operationId: enrollNode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollNodeRequest"
+      responses:
+        "201":
+          description: Node enrolled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /nodes/enroll-tokens:
+    post:
+      tags: [Admin]
+      summary: Create enroll token
+      description: One-time token for node self-registration. Token value is returned once.
+      operationId: createEnrollToken
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEnrollTokenRequest"
+      responses:
+        "201":
+          description: Enroll token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEnrollTokenResult"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -453,6 +508,52 @@ components:
         public_host:
           type: string
           description: Hostname used in client share links
+
+    EnrollNodeRequest:
+      type: object
+      required: [token, api_url, api_key, public_host]
+      properties:
+        token:
+          type: string
+          description: One-time enroll token
+        name:
+          type: string
+          description: Must match token node name if set
+        api_url:
+          type: string
+        api_key:
+          type: string
+        public_host:
+          type: string
+        ip:
+          type: string
+          description: Optional; stored in DB (default host from api_url)
+
+    CreateEnrollTokenRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Unique node name to reserve
+        ttl_hours:
+          type: integer
+          description: Token lifetime (default from config)
+
+    CreateEnrollTokenResult:
+      type: object
+      properties:
+        token:
+          type: string
+        name:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        master_url:
+          type: string
+        join_command:
+          type: string
 
     AddUserRequest:
       type: object

@@ -11,7 +11,6 @@ import (
 	"github.com/thethoughtcriminal/xray-master/internal/config"
 	"github.com/thethoughtcriminal/xray-master/internal/db"
 	"github.com/thethoughtcriminal/xray-master/internal/nodeclient"
-	"github.com/thethoughtcriminal/xray-master/internal/provision"
 	"github.com/thethoughtcriminal/xray-master/internal/subscription"
 )
 
@@ -38,21 +37,20 @@ func (m *Master) AddNode(in AddNodeInput) (*db.Node, error) {
 	if in.Name == "" {
 		return nil, fmt.Errorf("%w: name is required", ErrValidation)
 	}
+	if strings.TrimSpace(in.IP) != "" {
+		return nil, fmt.Errorf("%w: use 'node token create' and run xray-node join on the VPS (self-registration)", ErrValidation)
+	}
 	if _, err := db.GetNodeByName(m.conn, in.Name); err == nil {
 		return nil, fmt.Errorf("%w: node %q already exists", ErrConflict, in.Name)
 	} else if err != sql.ErrNoRows {
 		return nil, err
-	}
-
-	if strings.TrimSpace(in.IP) != "" {
-		return m.addNodeByIP(in)
 	}
 	return m.addNodeManual(in)
 }
 
 func (m *Master) addNodeManual(in AddNodeInput) (*db.Node, error) {
 	if in.APIURL == "" || in.APIKey == "" || in.PublicHost == "" {
-		return nil, fmt.Errorf("%w: api_url, api_key, and public_host are required (or use ip for auto-provision)", ErrValidation)
+		return nil, fmt.Errorf("%w: api_url, api_key, and public_host are required (or use node token create + xray-node join)", ErrValidation)
 	}
 	node := db.Node{
 		ID:         uuid.NewString(),
@@ -65,44 +63,6 @@ func (m *Master) addNodeManual(in AddNodeInput) (*db.Node, error) {
 		Status:     db.NodeStatusReady,
 	}
 	if err := db.CreateNode(m.conn, node); err != nil {
-		return nil, err
-	}
-	return &node, nil
-}
-
-func (m *Master) addNodeByIP(in AddNodeInput) (*db.Node, error) {
-	ip := strings.TrimSpace(in.IP)
-	publicHost := strings.TrimSpace(in.PublicHost)
-	if publicHost == "" {
-		publicHost = ip
-	}
-
-	node := db.Node{
-		ID:         uuid.NewString(),
-		Name:       in.Name,
-		IP:         ip,
-		PublicHost: publicHost,
-		Enabled:    true,
-		Status:     db.NodeStatusProvisioning,
-	}
-	if err := db.CreateNode(m.conn, node); err != nil {
-		return nil, err
-	}
-
-	prov := provision.New(m.cfg.Provision)
-	result, err := prov.Provision(ip)
-	if err != nil {
-		node.Status = db.NodeStatusError
-		node.LastError = err.Error()
-		_ = db.UpdateNode(m.conn, node)
-		return nil, fmt.Errorf("provision node %s (%s): %w", in.Name, ip, err)
-	}
-
-	node.APIURL = result.APIURL
-	node.APIKey = result.APIKey
-	node.Status = db.NodeStatusReady
-	node.LastError = ""
-	if err := db.UpdateNode(m.conn, node); err != nil {
 		return nil, err
 	}
 	return &node, nil

@@ -140,29 +140,28 @@ Auth: `X-Admin-Key`
 ## 8. Безопасность
 
 - `admin_key` и `api_key` нод — секреты
-- Мастер подключается к нодам по SSH (bootstrap) и HTTP `:9472` (только с IP мастера, через ufw)
-- SSH-ключ мастера: `/etc/xray-master/id_ed25519` — добавить на каждую новую ноду в `authorized_keys`
+- Мастер подключается к нодам по **HTTP** `:9472` (после self-enrollment)
+- Enroll token — одноразовый секрет; нода вызывает `POST /nodes/enroll`
 - `public_url` — HTTPS с валидным сертификатом для продакшена
 
 ---
 
-## 9. Provisioning нод (v2)
+## 9. Регистрация нод (self-enrollment)
+
+Мастер **не подключается по SSH**. Нода устанавливается автономно, затем сама регистрируется:
 
 ```
-xray-master node add --name nl-1 --ip 203.0.113.10
+1. master:  xray-master node token create --name nl-1
+2. node:    install.sh (без мастера)
+3. node:    xray-node join --master-url ... --token ... --name nl-1
+4. master:  xray-master sync users
 ```
 
-1. SSH `root@IP` с ключом из `provision.ssh_key_path`
-2. `curl install.sh | bash` → 3x-ui + xray-node
-3. `api.listen: 0.0.0.0:9472` + `ufw allow from MASTER_IP`
-4. Сохранить `api_url`, `api_key`, `public_host` в SQLite
+**HTTP контракт:** `POST /nodes/enroll` (JSON, one-time token).
 
-После добавления ноды в `subscription.profiles`:
+После регистрации вся операционка — HTTP `:9472` (как раньше).
 
-```bash
-systemctl restart xray-master
-xray-master sync users
-```
+Profiles в config.yaml влияют только на `/sub/{token}`, не на провижинг users.
 
 ---
 

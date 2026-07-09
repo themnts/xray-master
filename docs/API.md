@@ -5,7 +5,7 @@ Machine-readable spec: [openapi.yaml](./openapi.yaml)
 Interactive viewer (paste the raw OpenAPI URL into [Swagger Editor](https://editor.swagger.io/)):
 
 ```
-https://raw.githubusercontent.com/thethoughtcriminal/xray-master/main/docs/openapi.yaml
+https://raw.githubusercontent.com/themnts/xray-master/main/docs/openapi.yaml
 ```
 
 Default base URL: `http://127.0.0.1:9480` (see `server.listen` in config).
@@ -16,7 +16,7 @@ Default base URL: `http://127.0.0.1:9480` (see `server.listen` in config).
 
 | Scope | Header | Value |
 |-------|--------|-------|
-| Public endpoints | — | no auth |
+| Public endpoints | — | no auth (`/healthz`, `/sub/{token}`, `POST /nodes/enroll`) |
 | Admin endpoints | `X-Admin-Key` | `server.admin_key` from `/etc/xray-master/config.yaml` |
 
 All JSON admin responses use `Content-Type: application/json`.
@@ -134,33 +134,104 @@ List registered VPN nodes.
 
 ---
 
-### `POST /nodes`
+### `POST /nodes/enroll`
 
-Register a node. **Auto-provision** when `ip` is set (master SSHs in and installs xray-node). **Manual** when `api_url` + `api_key` are set instead.
+**Public** — node self-registration (called by xray-node during `join`). Consumes a one-time enroll token.
 
-**Request body (auto-provision):**
+**Request body:**
+
+```json
+{
+  "token": "ONE_TIME_TOKEN",
+  "name": "nl-1",
+  "api_url": "http://203.0.113.10:9472",
+  "api_key": "NODE_API_KEY",
+  "public_host": "nl.example.com",
+  "ip": "203.0.113.10"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `token` | yes | One-time token from `POST /nodes/enroll-tokens` |
+| `name` | no | Must match token's node name if set |
+| `api_url` | yes | xray-node API base URL (reachable from master) |
+| `api_key` | yes | xray-node `X-API-Key` |
+| `public_host` | yes | Hostname/IP in client VPN links |
+| `ip` | no | Stored in DB (default: host from `api_url`) |
+
+Master verifies the node by calling `GET /inbounds` on `api_url`.
+
+**201:** created `Node` object (`Status`: `ready`).
+
+**400:** invalid/expired token, API unreachable, validation error.
+
+**409:** node name already registered.
+
+---
+
+### `POST /nodes/enroll-tokens`
+
+Create a one-time enroll token (admin).
+
+**Request body:**
 
 ```json
 {
   "name": "nl-1",
-  "ip": "203.0.113.10",
+  "ttl_hours": 24
+}
+```
+
+**201:**
+
+```json
+{
+  "token": "abc123...",
+  "name": "nl-1",
+  "expires_at": "2026-07-10T12:00:00Z",
+  "master_url": "https://sub.example.com",
+  "join_command": "xray-node join --master-url ..."
+}
+```
+
+Token is shown once. CLI equivalent: `xray-master node token create --name nl-1`.
+
+---
+
+### `POST /nodes`
+
+Register a node manually (admin). Use when xray-node is already running and you have `api_url` + `api_key`.
+
+**Request body:**
+
+```json
+{
+  "name": "nl-1",
+  "api_url": "http://203.0.113.10:9472",
+  "api_key": "NODE_API_KEY",
   "public_host": "nl.example.com"
 }
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | yes | Unique name; must match `subscription.profiles` |
-| `ip` | auto mode | Node VPS IP; triggers SSH provisioning (~2 min) |
-| `public_host` | no | Hostname in client links (default: `ip`) |
-| `api_url` | manual mode | xray-node API base URL |
-| `api_key` | manual mode | xray-node `X-API-Key` |
+| `name` | yes | Unique name; referenced in `subscription.profiles` for `/sub` output |
+| `api_url` | yes | xray-node API base URL |
+| `api_key` | yes | xray-node `X-API-Key` |
+| `public_host` | yes | Hostname used in client share links |
 
-**201:** created `Node` object (includes `IP`, `Status`: `ready` | `provisioning` | `error`).
+**201:** created `Node` object.
 
 **409:** node name already exists.
 
-**502/500:** provisioning failed (SSH, install, or API unreachable).
+**502:** xray-node unreachable or returned error.
+
+---
+
+### `POST /nodes` (legacy note)
+
+SSH auto-provision via `ip` is removed. Prefer enroll tokens + `xray-node join`, or manual `POST /nodes`.
 
 ---
 
@@ -179,30 +250,6 @@ Subscription profiles only affect `/sub/{token}` output, not provisioning.
   }
 }
 ```
-
----
-
-### `POST /nodes` (manual example)
-
-```json
-{
-  "name": "nl-1",
-  "api_url": "http://127.0.0.1:9472",
-  "api_key": "NODE_API_KEY",
-  "public_host": "nl.example.com"
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | yes | Unique name; must match `subscription.profiles[].entries[].node` |
-| `api_url` | yes | xray-node API base URL |
-| `api_key` | yes | xray-node `X-API-Key` |
-| `public_host` | yes | Hostname in client links |
-
-**Response `201`:** created `Node` object.
-
-**Response `409`:** node name already exists.
 
 ---
 
@@ -250,7 +297,7 @@ List subscription users.
 
 ### `POST /users`
 
-Create user and provision on all unique nodes from `subscription.profiles`.
+Create user and provision on all registered ready nodes (all enabled inbounds).
 
 **Request body:**
 

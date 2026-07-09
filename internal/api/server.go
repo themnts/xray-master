@@ -28,11 +28,13 @@ func New(cfg *config.Config, master *service.Master) *Server {
 	})
 
 	r.Get("/sub/{token}", s.serveSubscription)
+	r.Post("/nodes/enroll", s.enrollNode)
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.adminAuth)
 		r.Get("/nodes", s.listNodes)
 		r.Post("/nodes", s.addNode)
+		r.Post("/nodes/enroll-tokens", s.createEnrollToken)
 		r.Delete("/nodes/{id}", s.deleteNode)
 		r.Get("/users", s.listUsers)
 		r.Post("/users", s.addUser)
@@ -113,6 +115,53 @@ func (s *Server) addNode(w http.ResponseWriter, r *http.Request) {
 		APIURL:     req.APIURL,
 		APIKey:     req.APIKey,
 		PublicHost: req.PublicHost,
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, node)
+}
+
+type createEnrollTokenRequest struct {
+	Name     string `json:"name"`
+	TTLHours int    `json:"ttl_hours"`
+}
+
+func (s *Server) createEnrollToken(w http.ResponseWriter, r *http.Request) {
+	var req createEnrollTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := s.master.CreateEnrollToken(service.CreateEnrollTokenInput{
+		Name: req.Name, TTLHours: req.TTLHours,
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, result)
+}
+
+type enrollNodeRequest struct {
+	Token      string `json:"token"`
+	Name       string `json:"name"`
+	APIURL     string `json:"api_url"`
+	APIKey     string `json:"api_key"`
+	PublicHost string `json:"public_host"`
+	IP         string `json:"ip"`
+}
+
+func (s *Server) enrollNode(w http.ResponseWriter, r *http.Request) {
+	var req enrollNodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	node, err := s.master.EnrollNode(service.EnrollNodeInput{
+		Token: req.Token, Name: req.Name, APIURL: req.APIURL,
+		APIKey: req.APIKey, PublicHost: req.PublicHost, IP: req.IP,
 	})
 	if err != nil {
 		writeServiceError(w, err)

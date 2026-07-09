@@ -23,6 +23,17 @@ func migrate(conn *sql.DB) error {
 			return fmt.Errorf("add column nodes.%s: %w", name, err)
 		}
 	}
+	if _, err := conn.Exec(`CREATE TABLE IF NOT EXISTS enroll_tokens (
+		id TEXT PRIMARY KEY,
+		node_name TEXT NOT NULL,
+		token_hash TEXT NOT NULL UNIQUE,
+		master_ip TEXT NOT NULL DEFAULT '',
+		expires_at TEXT NOT NULL,
+		used_at TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create enroll_tokens: %w", err)
+	}
 	return nil
 }
 

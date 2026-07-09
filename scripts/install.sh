@@ -10,7 +10,7 @@ set -euo pipefail
 #   XRAY_MASTER_INSTALL_CADDY=1          # reverse proxy via Caddy (needs DNS → this host)
 #   XRAY_MASTER_LISTEN=127.0.0.1:9480    # default: localhost only
 
-REPO_URL="${XRAY_MASTER_REPO:-https://github.com/thethoughtcriminal/xray-master.git}"
+REPO_URL="${XRAY_MASTER_REPO:-https://github.com/themnts/xray-master.git}"
 REPO_BRANCH="${XRAY_MASTER_BRANCH:-main}"
 INSTALL_DIR="${XRAY_MASTER_INSTALL_DIR:-/opt/xray-master}"
 CONFIG_PATH="/etc/xray-master/config.yaml"
@@ -73,19 +73,6 @@ patch_config_value() {
     { print }
   ' "${file}" >"${tmp}"
   mv "${tmp}" "${file}"
-}
-
-write_ssh_key() {
-  local key="/etc/xray-master/id_ed25519"
-  if [[ -f "${key}" ]]; then
-    echo "SSH key exists: ${key}"
-    return
-  fi
-  ssh-keygen -t ed25519 -N "" -f "${key}"
-  chmod 600 "${key}"
-  echo "Generated SSH key for node provisioning: ${key}.pub"
-  echo "Add this public key to root@<node>: ~/.ssh/authorized_keys"
-  cat "${key}.pub"
 }
 
 write_config() {
@@ -217,21 +204,17 @@ Admin:   X-Admin-Key: ${admin_key}
 2) Verify local API:
    curl http://${LISTEN}/healthz
 
-3) Add master's SSH public key to each new node (one-time bootstrap):
-   cat /etc/xray-master/id_ed25519.pub
-   # paste into root@NODE:~/.ssh/authorized_keys
+3) Create enroll token and register nodes:
+   xray-master node token create --name nl-1
+   # on VPS: install xray-node, then xray-node join ...
 
-4) Register VPN nodes (master SSHs in and installs xray-node):
-   xray-master node add --name nl-1 --ip NODE_IP
-
-5) Add node to subscription.profiles in ${CONFIG_PATH}, then:
-   systemctl restart xray-master
+4) Sync users to registered nodes:
    xray-master sync users
 
-6) Add a user:
+5) Add a user:
    xray-master user add --email user@example.com
 
-7) Public subscription URL base:
+6) Public subscription URL base:
    ${public_url}/sub/<token>
 
 HTTPS: point DNS for your domain to this server, then either:
@@ -239,7 +222,7 @@ HTTPS: point DNS for your domain to this server, then either:
   or configure nginx/Caddy manually to proxy to ${LISTEN}
 
 Uninstall:
-  curl -fsSL https://raw.githubusercontent.com/thethoughtcriminal/xray-master/main/scripts/uninstall.sh | sudo bash -s --
+  curl -fsSL https://raw.githubusercontent.com/themnts/xray-master/main/scripts/uninstall.sh | sudo bash -s --
 
 EOF
 }
@@ -250,7 +233,6 @@ main() {
   clone_or_update_repo
   build_binary
   write_config
-  write_ssh_key
   write_systemd
   if should_install_caddy; then
     install_caddy_reverse_proxy

@@ -5,11 +5,9 @@ server:
   db_path: /var/lib/xray-master/data.db
 
 provision:
-  ssh_user: root
-  ssh_key_path: /etc/xray-master/id_ed25519
-  master_ip: ""              # auto-detect public IP if empty
+  master_ip: ""              # stored in enroll tokens for node firewall hints
+  enroll_ttl_hours: 24
   node_api_port: 9472
-  xray_node_install_script: https://raw.githubusercontent.com/thethoughtcriminal/xray-node/main/scripts/install.sh
 
 subscription:
   update_interval_hours: 12

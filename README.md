@@ -1,6 +1,6 @@
 # xray-master
 
-Subscription master server for a cluster of [xray-node](https://github.com/thethoughtcriminal/xray-node) VPN nodes.
+Subscription master server for a cluster of [xray-node](https://github.com/themnts/xray-node) VPN nodes.
 
 - Register nodes and manage them via Admin API / CLI
 - Add a user once → provisioned on all nodes (same email + UUID)
@@ -17,7 +17,7 @@ Subscription master server for a cluster of [xray-node](https://github.com/theth
 On a dedicated VPS (Ubuntu/Debian):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thethoughtcriminal/xray-master/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/themnts/xray-master/main/scripts/install.sh | sudo bash
 ```
 
 With HTTPS reverse proxy (Caddy) — DNS for the domain must already point to this server:
@@ -32,7 +32,7 @@ The installer builds the binary, writes `/etc/xray-master/config.yaml` (generate
 Uninstall:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thethoughtcriminal/xray-master/main/scripts/uninstall.sh | sudo bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/themnts/xray-master/main/scripts/uninstall.sh | sudo bash -s -- --yes
 ```
 
 ## Quick start (development)
@@ -45,36 +45,37 @@ cp configs/config.example.yaml /etc/xray-master/config.yaml
 xray-master serve --config /etc/xray-master/config.yaml
 ```
 
-## Register a node
+## Register a node (self-enrollment)
 
-Master SSHs into the VPS and installs xray-node automatically. One-time: add the master's SSH public key to the node:
-
-```bash
-cat /etc/xray-master/id_ed25519.pub   # on master
-# → paste into root@NODE:~/.ssh/authorized_keys
-```
-
-Then on master:
+**Step 1 — on master:** create a one-time enroll token:
 
 ```bash
-xray-master node add --name nl-1 --ip 203.0.113.10
-# optional: --public-host nl.example.com  (default: IP)
+xray-master node token create --name nl-1
+# prints token + join command
 ```
 
-Add the node to `subscription.profiles` in config when it should appear in user subscriptions, then restart:
+**Step 2 — on the VPS:** install xray-node standalone (no master required):
 
 ```bash
-nano /etc/xray-master/config.yaml
-systemctl restart xray-master
+curl -fsSL https://raw.githubusercontent.com/themnts/xray-node/main/scripts/install.sh | sudo bash
 ```
 
-New users are provisioned on all registered nodes automatically. To backfill existing users on a new node:
+**Step 3 — on the VPS:** join the master (now or later):
+
+```bash
+xray-node join --master-url https://sub.example.com --token TOKEN --name nl-1
+# or: curl -fsSL .../join.sh | sudo MASTER_URL=... ENROLL_TOKEN=... NODE_NAME=nl-1 bash
+```
+
+**Step 4 — on master:** sync users and add to subscription profiles when needed:
 
 ```bash
 xray-master sync users
+nano /etc/xray-master/config.yaml   # profiles for /sub output
+systemctl restart xray-master
 ```
 
-Manual registration (xray-node already installed) is still supported:
+Manual registration (without enroll token) is still supported:
 
 ```bash
 xray-master node add --name nl-1 \
