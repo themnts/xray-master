@@ -3,29 +3,33 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
 
-const DefaultPath = "/etc/xray-master/config.yaml"
+const (
+	DefaultPath             = "/etc/xray-master/config.yaml"
+	DefaultSubscriptionPath = "/etc/xray-master/subscription.yaml"
+)
 
 type Config struct {
 	Server       ServerConfig       `yaml:"server"`
-	Provision    ProvisionConfig    `yaml:"provision"`
-	Subscription SubscriptionConfig `yaml:"subscription"`
+	Enroll       EnrollConfig       `yaml:"enroll"`
+	Subscription SubscriptionConfig `yaml:"-"`
 }
 
-type ProvisionConfig struct {
+type EnrollConfig struct {
 	MasterIP       string `yaml:"master_ip"`
 	EnrollTTLHours int    `yaml:"enroll_ttl_hours"`
-	NodeAPIPort    int    `yaml:"node_api_port"`
 }
 
 type ServerConfig struct {
-	Listen    string `yaml:"listen"`
-	AdminKey  string `yaml:"admin_key"`
-	PublicURL string `yaml:"public_url"`
-	DBPath    string `yaml:"db_path"`
+	Listen           string `yaml:"listen"`
+	AdminKey         string `yaml:"admin_key"`
+	PublicURL        string `yaml:"public_url"`
+	DBPath           string `yaml:"db_path"`
+	SubscriptionPath string `yaml:"subscription_path"`
 }
 
 type SubscriptionConfig struct {
@@ -46,6 +50,13 @@ type ProfileEntry struct {
 	Label   string `yaml:"label"`
 }
 
+type configFile struct {
+	Server       ServerConfig       `yaml:"server"`
+	Enroll       EnrollConfig       `yaml:"enroll"`
+	Provision    EnrollConfig       `yaml:"provision"` // deprecated alias for enroll
+	Subscription SubscriptionConfig `yaml:"subscription"`
+}
+
 func Load(path string) (*Config, error) {
 	if path == "" {
 		path = DefaultPath
@@ -54,26 +65,75 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config %s: %w", path, err)
 	}
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	var file configFile
+	if err := yaml.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	cfg := Config{
+		Server:       file.Server,
+		Enroll:       file.Enroll,
+		Subscription: file.Subscription,
+	}
+	mergeLegacyProvision(&cfg, file.Provision)
+	applyDefaults(&cfg, path)
+
+	if len(cfg.Subscription.Profiles) > 0 {
+		applySubscriptionDefaults(&cfg.Subscription)
+	} else {
+		sub, err := loadSubscriptionFile(cfg.Server.SubscriptionPath)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Subscription = *sub
+		applySubscriptionDefaults(&cfg.Subscription)
+	}
+	return &cfg, nil
+}
+
+func loadSubscriptionFile(path string) (*SubscriptionConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read subscription %s: %w", path, err)
+	}
+	var sub SubscriptionConfig
+	if err := yaml.Unmarshal(data, &sub); err != nil {
+		return nil, fmt.Errorf("parse subscription %s: %w", path, err)
+	}
+	return &sub, nil
+}
+
+func mergeLegacyProvision(cfg *Config, legacy EnrollConfig) {
+	if cfg.Enroll.MasterIP == "" {
+		cfg.Enroll.MasterIP = legacy.MasterIP
+	}
+	if cfg.Enroll.EnrollTTLHours <= 0 && legacy.EnrollTTLHours > 0 {
+		cfg.Enroll.EnrollTTLHours = legacy.EnrollTTLHours
+	}
+}
+
+func applyDefaults(cfg *Config, mainPath string) {
 	if cfg.Server.Listen == "" {
 		cfg.Server.Listen = "0.0.0.0:9480"
 	}
 	if cfg.Server.DBPath == "" {
 		cfg.Server.DBPath = "/var/lib/xray-master/data.db"
 	}
-	if cfg.Subscription.UpdateIntervalHours <= 0 {
-		cfg.Subscription.UpdateIntervalHours = 12
+	if cfg.Server.SubscriptionPath == "" {
+		if mainPath == DefaultPath {
+			cfg.Server.SubscriptionPath = DefaultSubscriptionPath
+		} else {
+			cfg.Server.SubscriptionPath = filepath.Join(filepath.Dir(mainPath), "subscription.yaml")
+		}
 	}
-	if cfg.Provision.NodeAPIPort <= 0 {
-		cfg.Provision.NodeAPIPort = 9472
+	if cfg.Enroll.EnrollTTLHours <= 0 {
+		cfg.Enroll.EnrollTTLHours = 24
 	}
-	if cfg.Provision.EnrollTTLHours <= 0 {
-		cfg.Provision.EnrollTTLHours = 24
+}
+
+func applySubscriptionDefaults(sub *SubscriptionConfig) {
+	if sub.UpdateIntervalHours <= 0 {
+		sub.UpdateIntervalHours = 12
 	}
-	return &cfg, nil
 }
 
 func (c *Config) Validate() error {

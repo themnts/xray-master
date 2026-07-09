@@ -10,6 +10,7 @@ Subscription master server for a cluster of [xray-node](https://github.com/themn
 - Profile groups in config: `smart_multi` (balancer + observatory) or `single` (one outbound per config)
 
 **Technical spec:** [docs/TECHNICAL.md](docs/TECHNICAL.md)  
+**Configuration:** [docs/CONFIG.md](docs/CONFIG.md)  
 **HTTP API:** [docs/API.md](docs/API.md) · [OpenAPI](docs/openapi.yaml)
 
 ## Install (production)
@@ -23,11 +24,11 @@ curl -fsSL https://raw.githubusercontent.com/themnts/xray-master/main/scripts/in
 With HTTPS reverse proxy (Caddy) — DNS for the domain must already point to this server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thethoughtcriminal/xray-master/main/scripts/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/themnts/xray-master/main/scripts/install.sh | \
   sudo XRAY_MASTER_PUBLIC_URL=https://sub.example.com XRAY_MASTER_INSTALL_CADDY=1 bash
 ```
 
-The installer builds the binary, writes `/etc/xray-master/config.yaml` (generates `admin_key`), creates a systemd service, and listens on `127.0.0.1:9480` by default.
+The installer builds the binary, writes `/etc/xray-master/config.yaml` and `/etc/xray-master/subscription.yaml` (generates `admin_key`), creates a systemd service, and listens on `127.0.0.1:9480` by default.
 
 Uninstall:
 
@@ -67,11 +68,11 @@ xray-node join --master-url https://sub.example.com --token TOKEN --name nl-1
 # or: curl -fsSL .../join.sh | sudo MASTER_URL=... ENROLL_TOKEN=... NODE_NAME=nl-1 bash
 ```
 
-**Step 4 — on master:** sync users and add to subscription profiles when needed:
+**Step 4 — on master:** sync users and edit subscription profiles when needed:
 
 ```bash
 xray-master sync users
-nano /etc/xray-master/config.yaml   # profiles for /sub output
+nano /etc/xray-master/subscription.yaml
 systemctl restart xray-master
 ```
 

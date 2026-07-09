@@ -14,6 +14,7 @@ REPO_URL="${XRAY_MASTER_REPO:-https://github.com/themnts/xray-master.git}"
 REPO_BRANCH="${XRAY_MASTER_BRANCH:-main}"
 INSTALL_DIR="${XRAY_MASTER_INSTALL_DIR:-/opt/xray-master}"
 CONFIG_PATH="/etc/xray-master/config.yaml"
+SUBSCRIPTION_PATH="/etc/xray-master/subscription.yaml"
 DATA_DIR="/var/lib/xray-master"
 BIN_PATH="/usr/local/bin/xray-master"
 SERVICE_PATH="/etc/systemd/system/xray-master.service"
@@ -83,6 +84,7 @@ write_config() {
     sed -i "s/CHANGE_ME_ADMIN_KEY/${ADMIN_KEY}/" "${CONFIG_PATH}"
     patch_config_value "listen" "${LISTEN}" "${CONFIG_PATH}"
     patch_config_value "db_path" "${DATA_DIR}/data.db" "${CONFIG_PATH}"
+    patch_config_value "subscription_path" "${SUBSCRIPTION_PATH}" "${CONFIG_PATH}"
     if [[ -n "${PUBLIC_URL}" ]]; then
       patch_config_value "public_url" "${PUBLIC_URL}" "${CONFIG_PATH}"
     fi
@@ -90,6 +92,13 @@ write_config() {
     echo "Generated admin key in ${CONFIG_PATH}"
   else
     echo "Config exists: ${CONFIG_PATH}"
+  fi
+  if [[ ! -f "${SUBSCRIPTION_PATH}" ]]; then
+    cp "${INSTALL_DIR}/configs/subscription.example.yaml" "${SUBSCRIPTION_PATH}"
+    chmod 600 "${SUBSCRIPTION_PATH}"
+    echo "Created ${SUBSCRIPTION_PATH}"
+  else
+    echo "Subscription config exists: ${SUBSCRIPTION_PATH}"
   fi
 }
 
@@ -196,25 +205,29 @@ xray-master installed.
 
 Config:  ${CONFIG_PATH}
 Data:    ${DATA_DIR}/data.db
+Subscription: ${SUBSCRIPTION_PATH}
 Admin:   X-Admin-Key: ${admin_key}
 
 1) Edit subscription profiles (node names must match registered nodes):
+   nano ${SUBSCRIPTION_PATH}
+
+2) Server config (listen, public_url, enroll):
    nano ${CONFIG_PATH}
 
-2) Verify local API:
+3) Verify local API:
    curl http://${LISTEN}/healthz
 
-3) Create enroll token and register nodes:
+4) Create enroll token and register nodes:
    xray-master node token create --name nl-1
    # on VPS: install xray-node, then xray-node join ...
 
-4) Sync users to registered nodes:
+5) Sync users to registered nodes:
    xray-master sync users
 
-5) Add a user:
+6) Add a user:
    xray-master user add --email user@example.com
 
-6) Public subscription URL base:
+7) Public subscription URL base:
    ${public_url}/sub/<token>
 
 HTTPS: point DNS for your domain to this server, then either:

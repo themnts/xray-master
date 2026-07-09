@@ -36,12 +36,12 @@ func (m *Master) CreateEnrollToken(in CreateEnrollTokenInput) (*CreateEnrollToke
 	}
 	ttl := time.Duration(in.TTLHours) * time.Hour
 	if ttl <= 0 {
-		ttl = time.Duration(m.cfg.Provision.EnrollTTLHours) * time.Hour
+		ttl = time.Duration(m.cfg.Enroll.EnrollTTLHours) * time.Hour
 	}
 	if ttl <= 0 {
 		ttl = 24 * time.Hour
 	}
-	masterIP := strings.TrimSpace(m.cfg.Provision.MasterIP)
+	masterIP := strings.TrimSpace(m.cfg.Enroll.MasterIP)
 	plain, rec, err := db.CreateEnrollToken(m.conn, in.Name, masterIP, ttl)
 	if err != nil {
 		return nil, err

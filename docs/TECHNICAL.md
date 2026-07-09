@@ -38,7 +38,7 @@ xray-master → base64 links или JSON configs
 ```
 cmd/xray-master
 internal/
-  config/         # config.yaml, profiles
+  config/         # config.yaml, subscription.yaml
   db/             # SQLite: nodes, users
   nodeclient/     # HTTP клиент xray-node API
   service/        # Master: оркестрация
@@ -72,11 +72,15 @@ internal/
 
 ---
 
-## 4. Профили подписки (config.yaml)
+## 4. Профили подписки (subscription.yaml)
+
+Отдельный файл: `/etc/xray-master/subscription.yaml` (путь задаётся в `server.subscription_path`).
+
+Полная спецификация: [docs/CONFIG.md](CONFIG.md).
 
 ```yaml
-subscription:
-  profiles:
+update_interval_hours: 12
+profiles:
   - name: "🚀 SMART Auto"
     mode: smart_multi      # один JSON: N outbound + balancer + observatory
     entries:
@@ -159,15 +163,25 @@ Auth: `X-Admin-Key`
 
 **HTTP контракт:** `POST /nodes/enroll` (JSON, one-time token).
 
+Блок `enroll` в config.yaml (опционально):
+
+```yaml
+enroll:
+  master_ip: "203.0.113.1"   # для ufw на ноде (--master-ip в join)
+  enroll_ttl_hours: 24
+```
+
+Старый ключ `provision:` по-прежнему читается как alias.
+
 После регистрации вся операционка — HTTP `:9472` (как раньше).
 
-Profiles в config.yaml влияют только на `/sub/{token}`, не на провижинг users.
+Profiles в subscription.yaml влияют только на `/sub/{token}`, не на провижинг users.
 
 ---
 
 ## 10. Ограничения v1
 
-- Профили задаются в config.yaml (не в БД)
+- Профили задаются в subscription.yaml (не в БД)
 - Агрегация трафика — сумма по нодам из profile entries
 - Нет веб-UI, только CLI + Admin API
 - Нет авто-синхронизации inbound metadata (читается с нод при каждой выдаче подписки)

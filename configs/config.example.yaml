@@ -3,28 +3,8 @@ server:
   admin_key: CHANGE_ME_ADMIN_KEY
   public_url: https://sub.example.com
   db_path: /var/lib/xray-master/data.db
+  subscription_path: /etc/xray-master/subscription.yaml
 
-provision:
-  master_ip: ""              # stored in enroll tokens for node firewall hints
+enroll:
+  master_ip: ""
   enroll_ttl_hours: 24
-  node_api_port: 9472
-
-subscription:
-  update_interval_hours: 12
-  profiles:
-  - name: "🚀 SMART Auto"
-    mode: smart_multi
-    entries:
-    - node: nl-1
-      inbound: vless-reality
-      label: "🇳🇱 Netherlands"
-    - node: se-1
-      inbound: vless-reality
-      label: "🇸🇪 Sweden"
-
-  - name: "Dedicated Hy2"
-    mode: single
-    entries:
-    - node: de-1
-      inbound: hysteria2
-      label: "🇩🇪 Hysteria2"

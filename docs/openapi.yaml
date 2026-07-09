@@ -242,7 +242,7 @@ paths:
       summary: Add user
       description: |
         Creates user in the database and provisions the client on all unique nodes
-        referenced in `subscription.profiles` (config.yaml).
+        referenced in `subscription.yaml` profiles.
 
         If some nodes fail, user is still created; failures are returned in `node_errors`.
       operationId: addUser
